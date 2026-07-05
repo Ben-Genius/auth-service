@@ -28,8 +28,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // =============================================================================
@@ -59,6 +60,8 @@ model user {
   session  session[]
   account  account[]
   projects Project[]
+
+  @@map("as_user")
 }
 
 model session {
@@ -72,6 +75,8 @@ model session {
   userId    String
 
   user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("as_session")
 }
 
 model account {
@@ -90,6 +95,8 @@ model account {
   updatedAt            DateTime  @updatedAt
 
   user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("as_account")
 }
 
 model verification {
@@ -99,6 +106,8 @@ model verification {
   expiresAt  DateTime
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  @@map("as_verification")
 }
 
 // =============================================================================
@@ -119,6 +128,8 @@ model Project {
   user         user          @relation(fields: [userId], references: [id], onDelete: Cascade)
   serviceUsers ServiceUser[]
   otps         Otp[]
+
+  @@map("as_project")
 }
 
 // =============================================================================
@@ -148,6 +159,7 @@ model ServiceUser {
   // A user's email must be unique WITHIN a project, but can exist
   // in other projects (different apps might have the same user).
   @@unique([projectId, email])
+  @@map("as_service_user")
 }
 
 // =============================================================================
@@ -168,4 +180,6 @@ model Otp {
   // Relations
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   serviceUser ServiceUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("as_otp")
 }
