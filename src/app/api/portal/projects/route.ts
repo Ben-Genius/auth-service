@@ -1,24 +1,19 @@
-// GET /api/portal/projects — List developer's projects with user counts
-// POST /api/portal/projects — Create a new project
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { verifyPortalToken } from "@/lib/auth";
+import { auth } from "@/lib/better-auth/auth";
 import { generateApiKey } from "@/lib/api-key";
 
-async function getDeveloper(request: NextRequest) {
-  const token = request.cookies.get("portal-token")?.value;
-  if (!token) return null;
-  const payload = await verifyPortalToken(token);
-  if (!payload) return null;
-  return payload;
+async function getUser(request: NextRequest) {
+  const session = await auth.api.getSession({ headers: request.headers });
+  return session?.user ?? null;
 }
 
 export async function GET(request: NextRequest) {
-  const dev = await getDeveloper(request);
-  if (!dev) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  const user = await getUser(request);
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const projects = await db.project.findMany({
-    where: { developerId: dev.developerId },
+    where: { userId: user.id },
     include: { _count: { select: { serviceUsers: true } } },
     orderBy: { createdAt: "desc" },
   });
@@ -35,8 +30,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const dev = await getDeveloper(request);
-  if (!dev) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  const user = await getUser(request);
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   let body: unknown;
   try { body = await request.json(); } catch {
@@ -50,7 +45,7 @@ export async function POST(request: NextRequest) {
 
   const apiKey = generateApiKey();
   const project = await db.project.create({
-    data: { name: name.trim(), developerId: dev.developerId, apiKey },
+    data: { name: name.trim(), userId: user.id, apiKey },
   });
 
   return NextResponse.json({

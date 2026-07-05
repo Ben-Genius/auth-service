@@ -5,7 +5,7 @@
 //
 // ARCHITECTURE OVERVIEW:
 //
-//   Developer (you, or anyone who signs up on the portal)
+//   User (signs up via BetterAuth on the portal)
 //     └── Project (an "app" they want to add auth to)
 //           └── ServiceUser (end-users of THAT specific app)
 //                 └── Otp (verification codes for that end-user)
@@ -16,8 +16,8 @@
 // The "projectId" on every ServiceUser enforces this isolation.
 //
 // DATA FLOW:
-// 1. Developer signs up on the portal → gets a Developer account
-// 2. Developer creates a Project → gets an API key
+// 1. User signs up on the portal via BetterAuth → gets a BetterAuth session
+// 2. User creates a Project → gets an API key
 // 3. Developer's app calls /api/v1/auth/register with X-API-Key header
 // 4. Our service creates a ServiceUser scoped to that project
 // 5. Developer's app receives a JWT back — user is authenticated!
@@ -33,43 +33,90 @@ datasource db {
 }
 
 // =============================================================================
-// DEVELOPER — A person who uses our auth service
+// BETTERAUTH CORE TABLES
 // =============================================================================
-// This is NOT an end-user. This is a developer who signs up on our portal
-// to create projects and get API keys.
+// These tables are managed by BetterAuth for the portal authentication.
+// Developers sign in via BetterAuth's /api/auth/* endpoints.
 // =============================================================================
-model Developer {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String?
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+model user {
+  id                   String    @id @default(cuid())
+  name                 String?
+  email                String    @unique
+  emailVerified        Boolean   @default(false)
+  image                String?
+  phoneNumber          String?                           // phoneNumber plugin
+  phoneNumberVerified  Boolean   @default(false)          // phoneNumber plugin
+  username             String?   @unique                  // username plugin
+  role                 String?   @default("user")         // admin plugin
+  banned               Boolean?  @default(false)          // admin plugin
+  banReason            String?                           // admin plugin
+  banExpires           DateTime?                          // admin plugin
+  twoFactorEnabled     Boolean?  @default(false)          // twoFactor plugin
+  isAnonymous          Boolean?  @default(false)          // anonymous plugin
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  // One developer can create multiple projects
+  session  session[]
+  account  account[]
   projects Project[]
+}
+
+model session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model account {
+  id                   String    @id @default(cuid())
+  accountId            String
+  providerId           String
+  userId               String
+  accessToken          String?
+  refreshToken         String?
+  idToken              String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password             String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 // =============================================================================
 // PROJECT — Represents a developer's application
 // =============================================================================
 // Each project gets its own API key. ServiceUsers are scoped to a project.
-// This is the "tenant" in "multi-tenant".
-//
-// WHY NOT JUST USE THE DEVELOPER'S ID?
-// A developer might have multiple apps (e.g., a web app + a mobile app).
-// Each app needs its own user pool and API key.
+// This is the "tenant" in "multi-tenant". Now linked to BetterAuth user.
 // =============================================================================
 model Project {
   id        String   @id @default(cuid())
   name      String                              // e.g., "My SaaS App"
-  developerId String                           // who owns this project
-  apiKey    String   @unique                   // the key other apps use to call our API
+  userId    String                              // BetterAuth user who owns this
+  apiKey    String   @unique                    // the key other apps use to call our API
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  developer    Developer     @relation(fields: [developerId], references: [id], onDelete: Cascade)
+  user         user          @relation(fields: [userId], references: [id], onDelete: Cascade)
   serviceUsers ServiceUser[]
   otps         Otp[]
 }
