@@ -1,0 +1,124 @@
+// =============================================================================
+// PRISMA SCHEMA — Auth-as-a-Service (Multi-Tenant)
+// =============================================================================
+// This is a completely different architecture from single-app auth.
+//
+// ARCHITECTURE OVERVIEW:
+//
+//   Developer (you, or anyone who signs up on the portal)
+//     └── Project (an "app" they want to add auth to)
+//           └── ServiceUser (end-users of THAT specific app)
+//                 └── Otp (verification codes for that end-user)
+//
+// WHY MULTI-TENANT?
+// An auth service must isolate data per developer/app.
+// Developer A's users must NEVER be visible to Developer B.
+// The "projectId" on every ServiceUser enforces this isolation.
+//
+// DATA FLOW:
+// 1. Developer signs up on the portal → gets a Developer account
+// 2. Developer creates a Project → gets an API key
+// 3. Developer's app calls /api/v1/auth/register with X-API-Key header
+// 4. Our service creates a ServiceUser scoped to that project
+// 5. Developer's app receives a JWT back — user is authenticated!
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// DEVELOPER — A person who uses our auth service
+// =============================================================================
+// This is NOT an end-user. This is a developer who signs up on our portal
+// to create projects and get API keys.
+// =============================================================================
+model Developer {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // One developer can create multiple projects
+  projects Project[]
+}
+
+// =============================================================================
+// PROJECT — Represents a developer's application
+// =============================================================================
+// Each project gets its own API key. ServiceUsers are scoped to a project.
+// This is the "tenant" in "multi-tenant".
+//
+// WHY NOT JUST USE THE DEVELOPER'S ID?
+// A developer might have multiple apps (e.g., a web app + a mobile app).
+// Each app needs its own user pool and API key.
+// =============================================================================
+model Project {
+  id        String   @id @default(cuid())
+  name      String                              // e.g., "My SaaS App"
+  developerId String                           // who owns this project
+  apiKey    String   @unique                   // the key other apps use to call our API
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  developer    Developer     @relation(fields: [developerId], references: [id], onDelete: Cascade)
+  serviceUsers ServiceUser[]
+  otps         Otp[]
+}
+
+// =============================================================================
+// SERVICEUSER — End-users of a developer's application
+// =============================================================================
+// These are NOT users of our portal. They are users of the apps that
+// developers build. Each ServiceUser belongs to exactly one Project.
+//
+// WHY "ServiceUser" AND NOT "User"?
+// To avoid confusion. "User" usually means "person using our app".
+// "ServiceUser" makes it clear these are users of the SERVICE we provide.
+// =============================================================================
+model ServiceUser {
+  id            String   @id @default(cuid())
+  projectId     String                              // which project this user belongs to
+  email         String                              // email within this project's scope
+  name          String?
+  passwordHash  String
+  emailVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  otps    Otp[]
+
+  // A user's email must be unique WITHIN a project, but can exist
+  // in other projects (different apps might have the same user).
+  @@unique([projectId, email])
+}
+
+// =============================================================================
+// OTP — One-time verification codes
+// =============================================================================
+// Same as before, but now scoped to a project via the ServiceUser relation.
+// =============================================================================
+model Otp {
+  id        String   @id @default(cuid())
+  projectId String                              // denormalized for fast lookups
+  userId    String
+  code      String                              // bcrypt-hashed
+  purpose   String                              // "VERIFY_EMAIL"
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Relations
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  serviceUser ServiceUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
