@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { db as prisma } from "@/lib/db";
+import { sendEmail } from "@/lib/email";
 import {
   magicLink,
   phoneNumber,
@@ -36,9 +37,12 @@ export const auth = betterAuth({
     autoSignIn: true,
     minPasswordLength: 8,
     maxPasswordLength: 128,
-    sendResetPassword: async ({ user, url, token }) => {
-      console.log(`\n🔐 [Password Reset] Send to ${user.email}`);
-      console.log(`   📎 ${url}\n`);
+    sendResetPassword: async ({ user, url }) => {
+      await sendEmail({
+        to: user.email,
+        subject: "Reset your password",
+        html: `<p>Click <a href="${url}">here</a> to reset your password. This link expires in 1 hour.</p>`,
+      });
     },
   },
 
@@ -46,9 +50,12 @@ export const auth = betterAuth({
   emailVerification: {
     sendOnSignUp: false,
     autoSignInAfterVerification: true,
-    sendVerificationEmail: async ({ user, url, token }) => {
-      console.log(`\n✅ [Email Verification] Send to ${user.email}`);
-      console.log(`   📎 ${url}\n`);
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendEmail({
+        to: user.email,
+        subject: "Verify your email",
+        html: `<p>Click <a href="${url}">here</a> to verify your email. This link expires in 1 hour.</p>`,
+      });
     },
     expiresIn: 3600,
   },
@@ -99,9 +106,12 @@ export const auth = betterAuth({
   plugins: [
     // Magic Link — passwordless sign-in via email
     magicLink({
-      sendMagicLink: async ({ email, url, token }) => {
-        console.log(`\n🔗 [Magic Link] Send to ${email}`);
-        console.log(`   📎 ${url}\n`);
+      sendMagicLink: async ({ email, url }) => {
+        await sendEmail({
+          to: email,
+          subject: "Sign in to Auth Service",
+          html: `<p>Click <a href="${url}">here</a> to sign in. This link expires in 5 minutes.</p>`,
+        });
       },
       expiresIn: 300,
       disableSignUp: false,
@@ -130,7 +140,11 @@ export const auth = betterAuth({
     // Email OTP — verify email or sign in with OTP
     emailOTP({
       sendVerificationOTP: async ({ email, otp, type }) => {
-        console.log(`\n📧 [Email OTP] Send to ${email}: ${otp} (type: ${type})\n`);
+        await sendEmail({
+          to: email,
+          subject: `Your ${type === "sign-in" ? "sign-in" : "verification"} code`,
+          html: `<p>Your code is: <strong>${otp}</strong>. It expires in 5 minutes.</p>`,
+        });
       },
       expiresIn: 300,
       otpLength: 6,
