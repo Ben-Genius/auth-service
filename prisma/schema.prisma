@@ -57,9 +57,11 @@ model user {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  session  session[]
-  account  account[]
-  projects Project[]
+  session    session[]
+  account    account[]
+  projects   Project[]
+  twoFactor  twoFactor[]
+  member     member[]
 
   @@map("as_user")
 }
@@ -108,6 +110,69 @@ model verification {
   updatedAt  DateTime @updatedAt
 
   @@map("as_verification")
+}
+
+// =============================================================================
+// BETTERAUTH PLUGIN TABLES
+// =============================================================================
+// These are managed by BetterAuth plugins (twoFactor, organization).
+// =============================================================================
+
+model twoFactor {
+  id                       String    @id @default(cuid())
+  secret                   String
+  backupCodes              String
+  userId                   String
+  verified                 Boolean?  @default(true)
+  failedVerificationCount  Int?      @default(0)
+  lockedUntil              DateTime?
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("as_two_factor")
+}
+
+model organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  logo      String?
+  createdAt DateTime @default(now())
+  metadata  String?
+
+  member     member[]
+  invitation invitation[]
+
+  @@map("as_organization")
+}
+
+model member {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           String   @default("member")
+  createdAt      DateTime @default(now())
+
+  organization organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         user         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("as_member")
+}
+
+model invitation {
+  id             String   @id @default(cuid())
+  organizationId String
+  email          String
+  role           String
+  status         String   @default("pending")
+  teamId         String?
+  inviterId      String
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  organization organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("as_invitation")
 }
 
 // =============================================================================
